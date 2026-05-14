@@ -11,14 +11,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Original 5 ──────────────────────────────────────────────────────────────
+# Original 5
 from strategies.funding_rate_arb import run as run_funding_arb
 from strategies.cross_exchange_arb import run as run_cross_arb
 from strategies.grid_trading import run as run_grid
 from strategies.stat_arb import run as run_stat_arb
 from strategies.multi_factor import run as run_multi_factor
 
-# ── New 10 ──────────────────────────────────────────────────────────────────
+# New 10
 from strategies.momentum_scalp import run as run_momentum_scalp
 from strategies.mean_reversion import run as run_mean_reversion
 from strategies.breakout_hunter import run as run_breakout_hunter
@@ -32,13 +32,12 @@ from strategies.volatility_harvest import run as run_volatility_harvest
 
 from risk.risk_engine import get_risk_status
 from utils.telegram_alert import send_alert, send_profit_report
-from utils.midas_log import get_war_chest
+from utils.midas_log import log_trade, get_war_chest
 
 CAPITAL = float(os.getenv("SOBEK_CAPITAL", "1000.0"))
 SIMULATE_MODE = os.getenv("SIMULATE_MODE", "true").lower() == "true"
 CYCLE_INTERVAL = int(os.getenv("CYCLE_INTERVAL", "300"))
 
-# Strategy cadence: name -> {interval in seconds, last_run}
 STRATEGIES = {
     "momentum_scalp":     {"fn": run_momentum_scalp,    "interval": 60,    "last_run": 0},
     "cross_arb":          {"fn": run_cross_arb,          "interval": 60,    "last_run": 0},
@@ -57,6 +56,24 @@ STRATEGIES = {
     "multi_factor":       {"fn": run_multi_factor,       "interval": 86400, "last_run": 0},
 }
 
+def process_results(name: str, results):
+    """Log all trade results from a strategy into the War Chest."""
+    if not results:
+        return
+    if isinstance(results, dict):
+        results = [results]
+    for trade in results:
+        if not isinstance(trade, dict):
+            continue
+        if "pnl" not in trade:
+            continue
+        trade["strategy"] = trade.get("strategy", name)
+        log_trade(trade)
+        pnl = trade["pnl"]
+        pair = trade.get("pair", name)
+        emoji = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
+        print(f"  {emoji} [{name}] {pair} | PnL: {pnl:+.4f} USDT")
+
 def run_cycle():
     now = time.time()
     status = get_risk_status()
@@ -68,7 +85,8 @@ def run_cycle():
         if now - cfg["last_run"] >= cfg["interval"]:
             print(f"[SOBEK] Running: {name}")
             try:
-                cfg["fn"](CAPITAL)
+                results = cfg["fn"](CAPITAL)
+                process_results(name, results)
             except Exception as e:
                 print(f"[SOBEK] {name} error: {e}")
             cfg["last_run"] = now
@@ -81,26 +99,41 @@ def daily_report():
     win_rate = wins / total if total > 0 else 0
     send_profit_report(pnl, total, win_rate, CAPITAL)
 
+    strategies = chest.get("strategies", {})
+    if strategies:
+        top_name = max(strategies, key=lambda x: strategies[x]["pnl"])
+        top_data = strategies[top_name]
+        send_alert(
+            f"📊 TOP STRATEGY\n"
+            f"━━━━━━━━━━━━━━━━━\n"
+            f"🏆 {top_name}\n"
+            f"💰 PnL: {top_data['pnl']:+.4f} USDT\n"
+            f"📈 Trades: {top_data['trades']}\n"
+            f"🎯 Wins: {top_data.get('wins', 0)}"
+        )
+
 def main():
     mode = "SIMULATE" if SIMULATE_MODE else "LIVE"
     print(f"""
-\u2554{"\u2550"*38}\u2557
-\u2551   \U0001f40a SOBEK ANKH \u2014 THE TRADER \U0001f40a    \u2551
-\u2551   Pantheon | Ankh Series            \u2551
-\u2551   Mode: {mode:<28} \u2551
-\u2551   Capital: ${CAPITAL:<26.2f} \u2551
-\u2551   Strategies: 15 Active             \u2551
-\u2551   Risk Engine: ARMED                \u2551
-\u255a{"\u2550"*38}\u255d
+╔══════════════════════════════════════════╗
+║   🐊 SOBEK ANKH — THE TRADER 🐊        ║
+║   Pantheon | Ankh Series                ║
+║   Mode: {mode:<30} ║
+║   Capital: ${CAPITAL:<28.2f} ║
+║   Strategies: 15 Active                 ║
+║   Risk Engine: ARMED                    ║
+║   War Chest: TRACKING                   ║
+╚══════════════════════════════════════════╝
     """)
 
     send_alert(
-        f"\U0001f40a SOBEK ANKH ONLINE\n"
+        f"🐊 SOBEK ANKH ONLINE\n"
         f"Mode: {mode}\n"
         f"Capital: ${CAPITAL:.2f}\n"
         f"Strategies: ALL 15 ACTIVE\n"
+        f"War Chest: TRACKING LIVE\n"
         f"Risk Engine: ARMED\n"
-        f"The Nile flows at full strength. \U0001f531"
+        f"The Nile flows at full strength. 🔱"
     )
 
     last_daily_report = 0
@@ -113,13 +146,22 @@ def main():
                 daily_report()
                 last_daily_report = now
             time.sleep(CYCLE_INTERVAL)
+
         except KeyboardInterrupt:
             print("\n[SOBEK] Shutting down gracefully.")
-            send_alert("\U0001f40a SOBEK offline \u2014 manual shutdown by Forgemaster.")
+            chest = get_war_chest()
+            pnl = chest.get("total_pnl", 0.0)
+            trades = chest.get("total_trades", 0)
+            send_alert(
+                f"🐊 SOBEK offline — manual shutdown.\n"
+                f"Session PnL: {pnl:+.4f} USDT\n"
+                f"Total Trades: {trades}\n"
+                f"For the War Chest. 🔱"
+            )
             break
         except Exception as e:
             print(f"[SOBEK] Cycle error: {e}")
-            send_alert(f"\u26a0\ufe0f SOBEK cycle error: {str(e)[:200]}")
+            send_alert(f"⚠️ SOBEK cycle error: {str(e)[:200]}")
             time.sleep(30)
 
 if __name__ == "__main__":
