@@ -1,94 +1,79 @@
 """
 Sobek Ankh — The Trader
-Pantheon Member #7 (Ankh Series)
-Institutional-grade crypto trading bot.
+Pantheon | Ankh Series
 15 strategies. 100+ exchanges. Full risk engine. Never blows up.
 
 "The waters of the Nile do not ask permission to flow." — Sobek
 """
 import time
-import threading
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Original 5 ──────────────────────────────────────────────────────────────
 from strategies.funding_rate_arb import run as run_funding_arb
 from strategies.cross_exchange_arb import run as run_cross_arb
 from strategies.grid_trading import run as run_grid
 from strategies.stat_arb import run as run_stat_arb
 from strategies.multi_factor import run as run_multi_factor
-from risk.risk_engine import get_risk_status, wake_sobek
+
+# ── New 10 ──────────────────────────────────────────────────────────────────
+from strategies.momentum_scalp import run as run_momentum_scalp
+from strategies.mean_reversion import run as run_mean_reversion
+from strategies.breakout_hunter import run as run_breakout_hunter
+from strategies.dca_engine import run as run_dca_engine
+from strategies.liquidation_sniper import run as run_liquidation_sniper
+from strategies.news_sentiment import run as run_news_sentiment
+from strategies.on_chain_alpha import run as run_on_chain_alpha
+from strategies.options_flow import run as run_options_flow
+from strategies.pairs_rotation import run as run_pairs_rotation
+from strategies.volatility_harvest import run as run_volatility_harvest
+
+from risk.risk_engine import get_risk_status
 from utils.telegram_alert import send_alert, send_profit_report
 from utils.midas_log import get_war_chest
 
-# ─── CONFIG ──────────────────────────────────────────────────────────────────
-CAPITAL = float(os.getenv("SOBEK_CAPITAL", "1000.0"))  # Starting capital in USDT
+CAPITAL = float(os.getenv("SOBEK_CAPITAL", "1000.0"))
 SIMULATE_MODE = os.getenv("SIMULATE_MODE", "true").lower() == "true"
-CYCLE_INTERVAL = int(os.getenv("CYCLE_INTERVAL", "300"))  # 5 minutes per cycle
-DAILY_REPORT_HOUR = int(os.getenv("DAILY_REPORT_HOUR", "8"))  # 8 AM daily report
+CYCLE_INTERVAL = int(os.getenv("CYCLE_INTERVAL", "300"))
 
-# ─── STRATEGY SCHEDULE ────────────────────────────────────────────────────────
-# Each strategy runs on its own cadence
-STRATEGY_CADENCE = {
-    "funding_arb":    {"interval": 28800,  "last_run": 0},  # Every 8h (funding period)
-    "cross_arb":      {"interval": 60,     "last_run": 0},  # Every 1 min (fast)
-    "grid_trading":   {"interval": 300,    "last_run": 0},  # Every 5 min
-    "stat_arb":       {"interval": 1800,   "last_run": 0},  # Every 30 min
-    "multi_factor":   {"interval": 86400,  "last_run": 0},  # Daily rebalance
+# Strategy cadence: name -> {interval in seconds, last_run}
+STRATEGIES = {
+    "momentum_scalp":     {"fn": run_momentum_scalp,    "interval": 60,    "last_run": 0},
+    "cross_arb":          {"fn": run_cross_arb,          "interval": 60,    "last_run": 0},
+    "liquidation_sniper": {"fn": run_liquidation_sniper, "interval": 120,   "last_run": 0},
+    "mean_reversion":     {"fn": run_mean_reversion,     "interval": 300,   "last_run": 0},
+    "grid_trading":       {"fn": run_grid,               "interval": 300,   "last_run": 0},
+    "breakout_hunter":    {"fn": run_breakout_hunter,    "interval": 300,   "last_run": 0},
+    "news_sentiment":     {"fn": run_news_sentiment,     "interval": 600,   "last_run": 0},
+    "dca_engine":         {"fn": run_dca_engine,         "interval": 900,   "last_run": 0},
+    "volatility_harvest": {"fn": run_volatility_harvest, "interval": 900,   "last_run": 0},
+    "options_flow":       {"fn": run_options_flow,       "interval": 1800,  "last_run": 0},
+    "stat_arb":           {"fn": run_stat_arb,           "interval": 1800,  "last_run": 0},
+    "on_chain_alpha":     {"fn": run_on_chain_alpha,     "interval": 1800,  "last_run": 0},
+    "pairs_rotation":     {"fn": run_pairs_rotation,     "interval": 3600,  "last_run": 0},
+    "funding_arb":        {"fn": run_funding_arb,        "interval": 28800, "last_run": 0},
+    "multi_factor":       {"fn": run_multi_factor,       "interval": 86400, "last_run": 0},
 }
 
-# ─── MAIN LOOP ────────────────────────────────────────────────────────────────
 def run_cycle():
-    """Execute one full Sobek cycle."""
     now = time.time()
-    results = []
-
-    # Check risk status first
     status = get_risk_status()
     if status.get("sobek_sleeping"):
         print("[SOBEK] Sleeping — drawdown limit hit. Awaiting Forgemaster restart.")
         return
 
-    # Funding Rate Arb (every 8h)
-    if now - STRATEGY_CADENCE["funding_arb"]["last_run"] >= STRATEGY_CADENCE["funding_arb"]["interval"]:
-        print("[SOBEK] Running: Funding Rate Arb")
-        r = run_funding_arb(CAPITAL)
-        results.extend(r if isinstance(r, list) else [r])
-        STRATEGY_CADENCE["funding_arb"]["last_run"] = now
-
-    # Cross-Exchange Arb (every 1 min)
-    if now - STRATEGY_CADENCE["cross_arb"]["last_run"] >= STRATEGY_CADENCE["cross_arb"]["interval"]:
-        print("[SOBEK] Running: Cross-Exchange Arb")
-        r = run_cross_arb(CAPITAL)
-        results.extend(r if isinstance(r, list) else [r])
-        STRATEGY_CADENCE["cross_arb"]["last_run"] = now
-
-    # Grid Trading (every 5 min)
-    if now - STRATEGY_CADENCE["grid_trading"]["last_run"] >= STRATEGY_CADENCE["grid_trading"]["interval"]:
-        print("[SOBEK] Running: Grid Trading")
-        r = run_grid(CAPITAL)
-        results.extend(r if isinstance(r, list) else [r])
-        STRATEGY_CADENCE["grid_trading"]["last_run"] = now
-
-    # Statistical Arb (every 30 min)
-    if now - STRATEGY_CADENCE["stat_arb"]["last_run"] >= STRATEGY_CADENCE["stat_arb"]["interval"]:
-        print("[SOBEK] Running: Statistical Arb")
-        r = run_stat_arb(CAPITAL)
-        results.extend(r if isinstance(r, list) else [r])
-        STRATEGY_CADENCE["stat_arb"]["last_run"] = now
-
-    # Multi-Factor (daily)
-    if now - STRATEGY_CADENCE["multi_factor"]["last_run"] >= STRATEGY_CADENCE["multi_factor"]["interval"]:
-        print("[SOBEK] Running: Multi-Factor Cross-Sectional")
-        r = run_multi_factor(CAPITAL)
-        results.append(r if isinstance(r, dict) else {})
-        STRATEGY_CADENCE["multi_factor"]["last_run"] = now
-
-    return results
+    for name, cfg in STRATEGIES.items():
+        if now - cfg["last_run"] >= cfg["interval"]:
+            print(f"[SOBEK] Running: {name}")
+            try:
+                cfg["fn"](CAPITAL)
+            except Exception as e:
+                print(f"[SOBEK] {name} error: {e}")
+            cfg["last_run"] = now
 
 def daily_report():
-    """Send daily performance report to Forgemaster."""
     chest = get_war_chest()
     total = chest.get("total_trades", 0)
     pnl = chest.get("total_pnl", 0.0)
@@ -99,23 +84,23 @@ def daily_report():
 def main():
     mode = "SIMULATE" if SIMULATE_MODE else "LIVE"
     print(f"""
-╔══════════════════════════════════════╗
-║   🐊 SOBEK ANKH — THE TRADER 🐊    ║
-║   Pantheon | Ankh Series            ║
-║   Mode: {mode:<28} ║
-║   Capital: ${CAPITAL:<26.2f} ║
-║   Strategies: 5 Active              ║
-║   Risk Engine: ARMED                ║
-╚══════════════════════════════════════╝
+\u2554{"\u2550"*38}\u2557
+\u2551   \U0001f40a SOBEK ANKH \u2014 THE TRADER \U0001f40a    \u2551
+\u2551   Pantheon | Ankh Series            \u2551
+\u2551   Mode: {mode:<28} \u2551
+\u2551   Capital: ${CAPITAL:<26.2f} \u2551
+\u2551   Strategies: 15 Active             \u2551
+\u2551   Risk Engine: ARMED                \u2551
+\u255a{"\u2550"*38}\u255d
     """)
 
     send_alert(
-        f"🐊 SOBEK ANKH ONLINE\n"
+        f"\U0001f40a SOBEK ANKH ONLINE\n"
         f"Mode: {mode}\n"
         f"Capital: ${CAPITAL:.2f}\n"
-        f"Strategies: Funding Arb | Cross-Exchange Arb | Grid | Stat Arb | Multi-Factor\n"
+        f"Strategies: ALL 15 ACTIVE\n"
         f"Risk Engine: ARMED\n"
-        f"The waters flow. 🔱"
+        f"The Nile flows at full strength. \U0001f531"
     )
 
     last_daily_report = 0
@@ -123,22 +108,18 @@ def main():
     while True:
         try:
             run_cycle()
-
-            # Daily report
             now = time.time()
             if now - last_daily_report >= 86400:
                 daily_report()
                 last_daily_report = now
-
             time.sleep(CYCLE_INTERVAL)
-
         except KeyboardInterrupt:
             print("\n[SOBEK] Shutting down gracefully.")
-            send_alert("🐊 SOBEK offline — manual shutdown by Forgemaster.")
+            send_alert("\U0001f40a SOBEK offline \u2014 manual shutdown by Forgemaster.")
             break
         except Exception as e:
             print(f"[SOBEK] Cycle error: {e}")
-            send_alert(f"⚠️ SOBEK cycle error: {str(e)[:200]}")
+            send_alert(f"\u26a0\ufe0f SOBEK cycle error: {str(e)[:200]}")
             time.sleep(30)
 
 if __name__ == "__main__":
