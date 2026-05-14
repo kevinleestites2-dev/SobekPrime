@@ -1,5 +1,5 @@
 """
-SobekAnkh — The Trader
+Sobek Ankh — The Trader
 Pantheon Member #7 (Ankh Series)
 Institutional-grade crypto trading bot.
 15 strategies. 100+ exchanges. Full risk engine. Never blows up.
