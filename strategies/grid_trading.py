@@ -1,5 +1,5 @@
 """
-SobekPrime — Strategy 3: Spot Grid Trading
+Sobek Ankh — Strategy 3: Spot Grid Trading
 Place buy/sell orders in a price range. Collect spread on every bounce.
 Q1 2026 real results: +419% APR on INJ, +272% total ROI on BONK.
 Best in sideways/ranging markets.
