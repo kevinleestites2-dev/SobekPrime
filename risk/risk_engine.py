@@ -1,5 +1,5 @@
 """
-SobekAnkh — Risk Engine
+Sobek Ankh — Risk Engine
 The law. Overrides everything. Sobek never blows up.
 """
 import os
