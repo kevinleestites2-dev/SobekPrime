@@ -1,5 +1,5 @@
 """
-SobekPrime — Strategy 1: Funding Rate Arbitrage
+Sobek Ankh — Strategy 1: Funding Rate Arbitrage
 Long spot + short perp simultaneously. Collect funding every 8h.
 Zero directional risk. 10-164% APY documented.
 """
