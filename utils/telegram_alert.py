@@ -1,5 +1,5 @@
 """
-SobekAnkh — Telegram Alert System
+Sobek Ankh — Telegram Alert System
 Inherits ZeusPrime's Telegram config. Sobek speaks through the same channel.
 """
 import os
