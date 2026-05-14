@@ -1,5 +1,5 @@
 """
-SobekPrime — Strategy 2: Cross-Exchange Arbitrage
+Sobek Ankh — Strategy 2: Cross-Exchange Arbitrage
 Same pair, different price on different exchanges.
 Buy low on Exchange A, sell high on Exchange B.
 Pure spread capture. Zero directional risk.
