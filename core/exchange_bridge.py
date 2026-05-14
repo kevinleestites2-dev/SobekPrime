@@ -1,5 +1,5 @@
 """
-SobekPrime — Exchange Bridge
+Sobek Ankh — Exchange Bridge
 CCXT unified interface to 100+ exchanges
 """
 import ccxt
