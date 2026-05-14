@@ -1,5 +1,5 @@
 """
-SobekPrime — MidasPrime Integration
+Sobek Ankh — MidasPrime Integration
 Every trade logged to the War Chest in real time.
 """
 import os
