@@ -1,5 +1,5 @@
 """
-SobekPrime — Strategy 5: Multi-Factor Cross-Sectional
+Sobek Ankh — Strategy 5: Multi-Factor Cross-Sectional
 Score ALL coins daily on: momentum, volume, volatility, funding, sentiment.
 Long top 5 scoring coins, short bottom 5.
 What KFQuant (Jane Street/WorldQuant alumni) actually runs.
