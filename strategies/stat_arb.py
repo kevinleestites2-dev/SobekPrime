@@ -1,5 +1,5 @@
 """
-SobekPrime — Strategy 4: Statistical Arbitrage (Pairs Trading)
+Sobek Ankh — Strategy 4: Statistical Arbitrage (Pairs Trading)
 Find correlated assets. When they diverge, bet on convergence.
 What $4B hedge funds use as their PRIMARY strategy.
 Market neutral. Consistent Sharpe ratio.
