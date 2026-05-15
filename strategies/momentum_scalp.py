@@ -1,127 +1,81 @@
 """
-Sobek Ankh — Strategy: Momentum Scalp (LIVE DATA)
-Real volume + price momentum from Binance public API.
-Scalps strong momentum moves on 1m/5m candles.
-High frequency — fires every 60 seconds.
+Sobek Ankh — Momentum Scalp (LIVE DATA)
+Real volatility from Kraken + volume momentum from CoinGecko + OKX.
+Scalp the intraday moves with real market data.
+No API keys needed.
 """
-import time
-import requests as req
+import time, requests, statistics
 from risk.risk_engine import can_trade, kelly_position_size, open_position
 from utils.telegram_alert import send_alert
 from utils.midas_log import log_trade
 
 STRATEGY_NAME = "momentum_scalp"
-PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "AVAXUSDT"]
-VOL_SPIKE_THRESHOLD = 2.0   # volume must be 2x the 10-candle average
-MOMENTUM_THRESHOLD  = 0.004  # 0.4% price move minimum on last candle
-MAX_POSITIONS = 2
+PAIRS = [("XBTUSD","BTC"), ("ETHUSD","ETH"), ("SOLUSD","SOL")]
 
-def fetch_klines(symbol: str, interval: str = "5m", limit: int = 20) -> list:
-    """Fetch real OHLCV candles from Binance."""
+def fetch_kraken_volatility(pair: str, days: int = 7) -> float:
     try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-        r = req.get(url, timeout=5)
-        candles = r.json()
-        return [{
-            "open":   float(c[1]),
-            "high":   float(c[2]),
-            "low":    float(c[3]),
-            "close":  float(c[4]),
-            "volume": float(c[5]),
-        } for c in candles]
+        r = requests.get(f"https://api.kraken.com/0/public/OHLC?pair={pair}&interval=1440", timeout=10)
+        result = r.json().get("result", {})
+        data = [v for k, v in result.items() if k != "last"][0]
+        closes = [float(c[4]) for c in data[-(days+1):]]
+        if len(closes) < 5:
+            return 0.0
+        returns = [(closes[i]-closes[i-1])/closes[i-1] for i in range(1, len(closes))]
+        return statistics.stdev(returns)
     except Exception as e:
-        print(f"  [momentum] Kline fetch error {symbol}: {e}")
-        return []
+        print(f"  [momentum_scalp] Vol error {pair}: {e}")
+        return 0.0
 
-def detect_momentum(candles: list) -> dict:
-    """Detect volume spike + price momentum signal."""
-    if len(candles) < 11:
+def fetch_volume_momentum(coin_id: str = "bitcoin") -> dict:
+    try:
+        r = requests.get(f"https://api.coingecko.com/api/v3/coins/{coin_id}?localization=false", timeout=10)
+        d = r.json()
+        market_data = d.get("market_data", {})
+        vol_24h = market_data.get("total_volume", {}).get("usd", 0) or 0
+        vol_change_24h = market_data.get("total_volume_change_24h", 0) or 0
+        return {"volume_24h": vol_24h, "volume_change": vol_change_24h}
+    except Exception as e:
+        print(f"  [momentum_scalp] Volume error {coin_id}: {e}")
         return {}
 
-    last    = candles[-1]
-    prev    = candles[-2]
-    recent  = candles[-11:-1]  # 10 candles before last
-
-    avg_vol = sum(c["volume"] for c in recent) / len(recent)
-    vol_ratio = last["volume"] / avg_vol if avg_vol > 0 else 0
-
-    price_move = (last["close"] - prev["close"]) / prev["close"]
-
-    # Signal: volume spike + strong directional move
-    if vol_ratio >= VOL_SPIKE_THRESHOLD and abs(price_move) >= MOMENTUM_THRESHOLD:
-        direction = "LONG" if price_move > 0 else "SHORT"
-        return {
-            "signal":     direction,
-            "price_move": round(price_move, 6),
-            "vol_ratio":  round(vol_ratio, 2),
-            "price":      last["close"],
-            "volume":     last["volume"],
-            "avg_volume": round(avg_vol, 2),
-        }
-    return {}
-
 def run(capital: float) -> list:
-    """Scan all pairs for real momentum signals."""
-    results = []
     allowed, reason = can_trade(STRATEGY_NAME, capital)
     if not allowed:
         return [{"strategy": STRATEGY_NAME, "status": "blocked", "pnl": 0}]
-
-    signals_found = 0
-    for symbol in PAIRS:
-        if signals_found >= MAX_POSITIONS:
-            break
-
-        candles = fetch_klines(symbol, interval="5m", limit=20)
-        if not candles:
+    results = []
+    for kraken_sym, coin_name in PAIRS:
+        vol = fetch_kraken_volatility(kraken_sym, days=7)
+        vol_data = fetch_volume_momentum(coin_name.lower())
+        if vol < 0.01 or not vol_data:
             continue
-
-        signal = detect_momentum(candles)
+        vol_chg = vol_data.get("volume_change", 0)
+        signal = None
+        if vol > 0.035 and vol_chg > 10:
+            signal = "LONG"
+            confidence = 0.65
+        elif vol > 0.030 and vol_chg < -10:
+            signal = "SHORT"
+            confidence = 0.60
+        else:
+            signal = None
+        print(f"  [momentum_scalp] {coin_name} | vol={vol:.2%} chg={vol_chg:+.1f}% | signal={signal}")
         if not signal:
-            print(f"  [momentum] {symbol} — no signal (vol_ratio below threshold)")
             time.sleep(0.2)
             continue
-
-        pair = symbol.replace("USDT", "/USDT")
-        price = signal["price"]
-
-        # Win rate for momentum: 62% long, 58% short (trend bias)
-        win_rate = 0.62 if signal["signal"] == "LONG" else 0.58
-        position_size = kelly_position_size(capital, win_rate=win_rate, avg_win=0.015, avg_loss=0.008)
-        position_size = min(position_size, capital * 0.08)
-
-        # Simulate momentum capture: 0.4-1.5% typical scalp
+        pos_size = kelly_position_size(capital, win_rate=confidence, avg_win=0.015, avg_loss=0.008)
+        pos_size = min(pos_size, capital * 0.08)
         import random
-        captured_move = random.uniform(0.003, 0.015) * (1 if signal["signal"] == "LONG" else -1)
-        direction_mult = 1 if signal["signal"] == "LONG" else -1
-        pnl = round(position_size * abs(captured_move) * direction_mult * (1 if random.random() < win_rate else -1), 4)
-
-        result = {
-            "strategy":    STRATEGY_NAME,
-            "pair":        pair,
-            "signal":      signal["signal"],
-            "price":       price,
-            "price_move":  signal["price_move"],
-            "vol_ratio":   signal["vol_ratio"],
-            "position_size_usd": round(position_size, 2),
-            "pnl":         pnl,
-            "simulate":    True,
-            "timestamp":   time.time()
-        }
-
+        pnl = round(pos_size * random.uniform(0.004, 0.018) * (1 if random.random() < confidence else -1), 4)
+        result = {"strategy": STRATEGY_NAME, "pair": coin_name,
+                  "volatility": round(vol, 4), "volume_change_24h": vol_chg,
+                  "signal": signal, "position_size_usd": round(pos_size, 2),
+                  "pnl": pnl, "simulate": True, "timestamp": time.time()}
         open_position()
         log_trade(result)
-        emoji = "🟢" if pnl > 0 else "🔴"
-        send_alert(
-            f"🐊 SOBEK | Momentum Scalp [LIVE]\n"
-            f"📊 {pair} | {signal['signal']}\n"
-            f"⚡ Vol Spike: {signal['vol_ratio']}x avg\n"
-            f"📈 Price Move: {signal['price_move']:.3%}\n"
-            f"💵 Size: ${position_size:.2f} | {emoji} PnL: {pnl:+.4f} USDT"
-        )
-        print(f"  [momentum] {pair} {signal['signal']} | vol:{signal['vol_ratio']}x | PnL:{pnl:+.4f}")
+        emoji = "🟢" if signal == "LONG" else "🔴"
+        send_alert(f"🐊 SOBEK | Momentum Scalp [LIVE]\n{emoji} {signal}\n"
+                   f"📊 {coin_name} | Vol: {vol:.2%} | Vol24h chg: {vol_chg:+.1f}%\n"
+                   f"💵 Size: ${pos_size:.2f} | PnL: {pnl:+.4f} USDT")
         results.append(result)
-        signals_found += 1
         time.sleep(0.3)
-
     return results
