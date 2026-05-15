@@ -1,0 +1,113 @@
+{
+  "version": "2.0.0",
+  "generated_at": null,
+  "regime": "NEUTRAL",
+  "regime_confidence": 0.5,
+
+  "strategy_weights": {
+    "momentum_scalp":     1.0,
+    "cross_arb":          1.0,
+    "liquidation_sniper": 1.0,
+    "mean_reversion":     1.0,
+    "grid_trading":       1.0,
+    "breakout_hunter":    1.0,
+    "news_sentiment":     1.0,
+    "dca_engine":         1.0,
+    "volatility_harvest": 1.0,
+    "options_flow":       1.0,
+    "stat_arb":           1.0,
+    "on_chain_alpha":     1.0,
+    "pairs_rotation":     1.0,
+    "funding_arb":        1.0,
+    "multi_factor":       1.0
+  },
+
+  "strategy_type": {
+    "momentum_scalp":     "object",
+    "cross_arb":          "meta",
+    "liquidation_sniper": "object",
+    "mean_reversion":     "object",
+    "grid_trading":       "object",
+    "breakout_hunter":    "object",
+    "news_sentiment":     "meta",
+    "dca_engine":         "object",
+    "volatility_harvest": "object",
+    "options_flow":       "meta",
+    "stat_arb":           "meta",
+    "on_chain_alpha":     "meta",
+    "pairs_rotation":     "object",
+    "funding_arb":        "meta",
+    "multi_factor":       "object"
+  },
+
+  "conviction_thresholds": {
+    "object_only":       0.40,
+    "meta_only":         0.60,
+    "object_meta_agree": 0.85,
+    "all_layers_agree":  0.95,
+    "conflict":          0.20
+  },
+
+  "regime_weights": {
+    "CRISIS": {
+      "breakout_hunter":    2.0,
+      "dca_engine":         2.0,
+      "on_chain_alpha":     1.5,
+      "grid_trading":       0.5,
+      "momentum_scalp":     0.5,
+      "funding_arb":        0.3
+    },
+    "RANGING": {
+      "grid_trading":       2.0,
+      "stat_arb":           2.0,
+      "mean_reversion":     1.8,
+      "pairs_rotation":     1.5,
+      "momentum_scalp":     0.3,
+      "breakout_hunter":    0.3
+    },
+    "BULL_EUPHORIA": {
+      "funding_arb":        2.0,
+      "options_flow":       1.8,
+      "breakout_hunter":    1.5,
+      "momentum_scalp":     1.5,
+      "dca_engine":         0.3
+    },
+    "BEAR_FEAR": {
+      "dca_engine":         2.0,
+      "on_chain_alpha":     1.8,
+      "news_sentiment":     1.5,
+      "mean_reversion":     1.5,
+      "liquidation_sniper": 1.3,
+      "momentum_scalp":     0.3
+    },
+    "NEUTRAL": {}
+  },
+
+  "safla": {
+    "enabled": true,
+    "review_every_n_trades": 50,
+    "trade_count_since_review": 0,
+    "shrink_threshold": 0.42,
+    "grow_threshold":   0.65,
+    "shrink_factor":    0.80,
+    "grow_factor":      1.20,
+    "max_weight":       3.0,
+    "min_weight":       0.1,
+    "last_review_at":   null,
+    "total_reviews":    0
+  },
+
+  "risk": {
+    "max_drawdown_pct":   0.15,
+    "pause_on_drawdown":  true,
+    "base_position_pct":  0.02,
+    "kelly_fraction":     0.25
+  },
+
+  "memory": {
+    "enabled": true,
+    "regime_history_file": "memory/regime_history.json",
+    "trade_log_file":      "memory/trade_log.json",
+    "performance_file":    "memory/strategy_performance.json"
+  }
+}
