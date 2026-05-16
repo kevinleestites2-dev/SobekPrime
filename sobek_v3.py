@@ -26,6 +26,9 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from collections import defaultdict
 
+# Flash loan arb strategy module
+from strat_flash_loan import strat_flash_loan_arb
+
 # ─────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────
@@ -915,6 +918,8 @@ def run_cycle(config: dict, chest: dict, regime: str,
         lambda: strat_grid_trading(CAPITAL, regime),
         lambda: strat_cross_exchange_arb(CAPITAL),
         lambda: strat_options_flow(CAPITAL),
+        # ── Flash Loan Arb ── zero capital required, unlimited loan size
+        lambda: strat_flash_loan_arb(tg, CAPITAL),
     ]
 
     for strat_fn in all_strategies:
